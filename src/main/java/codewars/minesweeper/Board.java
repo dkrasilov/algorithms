@@ -63,7 +63,7 @@ public class Board {
                 return;
             }
 
-            int simpleSolve = getUnsolved().stream().mapToInt(cell -> {
+            final int simpleSolve = getUnsolved().stream().mapToInt(cell -> {
                 final Set<Cell> unknownNeighbours = getNeighbours(cell, Cell.Type.UNKNOWN);
                 final int minesAround = cell.minesAround - getNeighbours(cell, Cell.Type.BOMB).size();
 
@@ -83,7 +83,7 @@ public class Board {
             if (simpleSolve > 0)
                 continue;
 
-            int nextLvlSolve = getUnsolved().stream().mapToInt(cell -> {
+            final int nextLvlSolve = getUnsolved().stream().mapToInt(cell -> {
                 final Set<Cell> unknownNeighbours = getNeighbours(cell, Cell.Type.UNKNOWN);
                 final Set<Cell> blankUnsolvedNeighbours = getUnsolved();
 
@@ -112,7 +112,7 @@ public class Board {
             if (nextLvlSolve > 0)
                 continue;
 
-            int bossLvlSolve = getUnsolved().stream().mapToInt(cell -> {
+            final int bossLvlSolve = getUnsolved().stream().mapToInt(cell -> {
                 final Set<Cell> unknownNeighbours = getNeighbours(cell, Cell.Type.UNKNOWN);
                 final Set<Cell> blankUnsolvedNeighbours = getUnsolvedNeighbours(cell);
 
@@ -137,6 +137,34 @@ public class Board {
 
             if (bossLvlSolve > 0)
                 continue;
+
+            final int groupedNeighboursLvlSolve = getUnsolved().stream().mapToInt(cell -> {
+                final Set<Cell> unknownNeighbours = getNeighbours(cell, Cell.Type.UNKNOWN);
+                final Set<Cell> blankUnsolvedNeighbours = getUnsolvedNeighbours(cell)
+                        .stream()
+                        .filter(c -> unknownNeighbours.containsAll(getNeighbours(c, Cell.Type.UNKNOWN)))
+                        .collect(Collectors.toSet());
+
+                final int minesAroundNeighbours = blankUnsolvedNeighbours.stream().mapToInt(this::calcMinesAround).sum();
+                final int minesAroundCell = calcMinesAround(cell);
+
+                if (minesAroundCell == minesAroundNeighbours) {
+                    final Set<Cell> allDistinctUnknownNeighbourNeighbours = blankUnsolvedNeighbours
+                            .stream()
+                            .flatMap(unsCell -> getNeighbours(unsCell, Cell.Type.UNKNOWN).stream())
+                            .collect(Collectors.toSet());
+
+                    final Set<Cell> diff = diff(unknownNeighbours, allDistinctUnknownNeighbourNeighbours);
+
+                    diff.forEach(this::open);
+                    return diff.size();
+                }
+                return 0;
+            }).sum();
+
+            if (groupedNeighboursLvlSolve > 0)
+                continue;
+
             solvable = false;
         }
     }
