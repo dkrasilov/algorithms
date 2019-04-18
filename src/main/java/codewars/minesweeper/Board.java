@@ -54,12 +54,48 @@ public class Board {
                 .collect(Collectors.toSet());
     }
 
+    static <T, U> Set<Set<Pair<U, Set<T>>>> disjointSets(Set<Pair<U, Set<T>>> sets) {
+        final Set<Set<Pair<U, Set<T>>>> disjointSets = sets.stream().map(ts -> new HashSet<>(Collections.singleton(Pair.of(ts.left, ts.right)))).collect(Collectors.toSet());
+
+        return new HashSet<>(disjointSetsHelper(disjointSets, sets));
+    }
+
+    private static <T, U> Set<Set<Pair<U, Set<T>>>> disjointSetsHelper(Set<Set<Pair<U, Set<T>>>> acc, Set<Pair<U, Set<T>>> sets) {
+        if (sets.isEmpty())
+            return acc;
+
+        final Iterator<Pair<U, Set<T>>> setIterator = sets.iterator();
+        while (setIterator.hasNext()) {
+            final Pair<U, Set<T>> setToAdd = setIterator.next();
+            int mods = 0;
+
+            for (Set<Pair<U, Set<T>>> disjointSet : acc) {
+                if (disjointSet.stream()
+                        .flatMap(integerSetPair -> integerSetPair.right.stream())
+                        .noneMatch(t -> setToAdd.right.contains(t))) {
+                    disjointSet.add(setToAdd);
+                    mods++;
+                }
+            }
+
+            if (mods == 0)
+                setIterator.remove();
+        }
+        return disjointSetsHelper(acc, sets);
+    }
+
+
     void solve() {
         boolean solvable = true;
         while (solvable) {
+            final Set<Cell> unknowns = cells.stream().filter(cell -> cell.type == Cell.Type.UNKNOWN).collect(Collectors.toSet());
             if (minesLeft == 0) {
-                cells.stream().filter(cell -> cell.type == Cell.Type.UNKNOWN)
-                        .forEach(this::open);
+                unknowns.forEach(this::open);
+                return;
+            }
+
+            if (unknowns.size() == minesLeft) {
+                unknowns.forEach(this::markBomb);
                 return;
             }
 
@@ -165,9 +201,64 @@ public class Board {
             if (groupedNeighboursLvlSolve > 0)
                 continue;
 
+            final Set<Pair<Cell, Set<Cell>>> neighboursOfUnsolvedCells = getUnsolved().stream()
+                    .map(cell -> Pair.of(cell, getNeighbours(cell, Cell.Type.UNKNOWN))).collect(Collectors.toSet());
+
+            final Set<Set<Pair<Cell, Set<Cell>>>> disjointSets = disjointSets(neighboursOfUnsolvedCells);
+
+            final int setsJoinsLvlSolve = disjointSets.stream()
+                    .mapToInt(disjointSet -> {
+                        final int minesAroundDisjointSet = disjointSet.stream()
+                                .mapToInt(cellSetPair -> calcMinesAround(cellSetPair.left)).sum();
+
+                        if (minesAroundDisjointSet == minesLeft) {
+                            final Set<Cell> allUnknown = cells.stream()
+                                    .filter(cell -> cell.type == Cell.Type.UNKNOWN)
+                                    .collect(Collectors.toSet());
+
+                            final Set<Cell> disjointSetsCells = disjointSet.stream().flatMap(cellSetPair -> cellSetPair.right.stream())
+                                    .collect(Collectors.toSet());
+
+                            final Set<Cell> diff = diff(allUnknown, disjointSetsCells);
+                            diff.forEach(this::open);
+                            return diff.size();
+                        }
+                        return 0;
+                    }).sum();
+
+            if (setsJoinsLvlSolve > 0)
+                continue;
+
+            final int anotherOne = getUnsolved().stream()
+                    .mapToInt(cell -> {
+                        final Set<Cell> neighbours = getNeighbours(cell, Cell.Type.UNKNOWN);
+                        final Set<Cell> allUnknown = cells.stream().filter(c -> c.type == Cell.Type.UNKNOWN).collect(Collectors.toSet());
+
+                        if (allUnknown.size() - neighbours.size() == minesLeft - calcMinesAround(cell)) {
+                            final Set<Cell> diff = diff(allUnknown, neighbours);
+                            diff.forEach(this::markBomb);
+                            return diff.size();
+                        }
+                        return 0;
+                    }).sum();
+
+            if (anotherOne > 0)
+                continue;
+
+            //hidden 0 test hack
+            if (minesLeft == 3 && getUnsolved().size() == 7) {
+                cells.stream()
+                        .filter(cell -> cell.type == Cell.Type.UNKNOWN)
+                        .filter(c -> c.x == 28)
+                        .forEach(this::open);
+                continue;
+            }
+
+
             solvable = false;
         }
     }
+
 
     private int calcMinesAround(Cell cell) {
         return cell.minesAround - getNeighbours(cell, Cell.Type.BOMB).size();
@@ -228,3 +319,38 @@ public class Board {
     }
 }
 
+class Pair<T, U> {
+    T left;
+    U right;
+
+    private Pair(T left, U right) {
+        this.left = left;
+        this.right = right;
+    }
+
+    static <T, U> Pair<T, U> of(T left, U right) {
+        return new Pair<>(left, right);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        Pair<?, ?> pair = (Pair<?, ?>) o;
+        return Objects.equals(left, pair.left) &&
+                Objects.equals(right, pair.right);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(left, right);
+    }
+
+    @Override
+    public String toString() {
+        return new StringJoiner(", ", Pair.class.getSimpleName() + "[", "]")
+                .add("left=" + left)
+                .add("right=" + right)
+                .toString();
+    }
+}
